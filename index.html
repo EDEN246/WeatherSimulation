@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>محاكي الطقس</title>
+<link rel="manifest" href="manifest.json">
+<style>
+:root{--bg:#f2f5f9;--card:#fff;--tx:#1a2230;--mu:#6b7686;--ac:#2f7de1;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10141c;--card:#1b2230;--tx:#eef2f8;--mu:#97a3b6;--ac:#5aa2ff}}
+:root[data-theme="dark"]{--bg:#10141c;--card:#1b2230;--tx:#eef2f8;--mu:#97a3b6;--ac:#5aa2ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;padding:12px;max-width:560px;margin-inline:auto}
+#sky{position:relative;height:300px;border-radius:20px;overflow:hidden;transition:background .3s}
+#sky>*{position:absolute}
+#stars{inset:0;transition:opacity .3s;background-image:radial-gradient(1.5px 1.5px at 12% 20%,#fff,transparent),radial-gradient(1.5px 1.5px at 30% 45%,#fff,transparent),radial-gradient(2px 2px at 55% 15%,#fff,transparent),radial-gradient(1.5px 1.5px at 72% 38%,#fff,transparent),radial-gradient(2px 2px at 88% 22%,#fff,transparent),radial-gradient(1.5px 1.5px at 44% 30%,#fff,transparent)}
+#sun,#moon{width:54px;height:54px;border-radius:50%;transform:translate(-50%,-50%)}
+#sun{background:#ffd54a;box-shadow:0 0 50px 20px rgba(255,200,60,.55)}
+#moon{background:#e8ecf5;box-shadow:0 0 30px 8px rgba(200,215,255,.35)}
+.c{height:44px;border-radius:50px;filter:blur(5px);background:var(--cc,#fff);animation:dr linear infinite}
+@keyframes dr{from{left:-240px}to{left:100%}}
+#fx{inset:0;width:100%;height:100%}
+#gr{left:0;right:0;bottom:0;height:46px;background:rgba(20,40,30,.55)}
+#info{inset:auto 0 52px 0;text-align:center;color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.45)}
+#t{font-size:64px;font-weight:700;line-height:1}
+#cd{font-size:20px;margin-top:4px}
+.card{background:var(--card);border-radius:18px;padding:14px;margin-top:12px}
+.row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.row:last-child{margin-bottom:0}
+.row label{min-width:62px;color:var(--mu);font-size:14px}
+.row b{min-width:78px;text-align:end;font-size:15px}
+input[type=range]{flex:1;accent-color:var(--ac)}
+select,input[type=date],button{font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--mu);border-radius:10px;padding:8px 10px}
+button{cursor:pointer;flex:1}
+#play.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.g{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.g div{background:var(--bg);border-radius:12px;padding:10px;text-align:center}
+.g small{display:block;color:var(--mu);font-size:12px;margin-bottom:2px}
+.g span{font-size:17px;font-weight:600}
+</style>
+</head>
+<body>
+<div id="sky">
+  <div id="stars"></div><div id="sun"></div><div id="moon"></div>
+  <canvas id="fx"></canvas><div id="gr"></div>
+  <div id="info"><div id="t">--°</div><div id="cd">--</div></div>
+</div>
+
+<div class="card">
+  <div class="row"><label>المناخ</label>
+    <select id="cl" style="flex:1"><option value="hot">صحراوي حار</option><option value="mild">معتدل</option><option value="cold">بارد</option></select></div>
+  <div class="row"><label>التاريخ</label><input type="date" id="dt" min="2026-01-01" max="2026-12-31" style="flex:1"></div>
+  <div class="row"><label>اليوم</label><input type="range" id="ds" min="1" max="365"><b id="dl"></b></div>
+  <div class="row"><label>الساعة</label><input type="range" id="hs" min="0" max="23.5" step="0.5"><b id="hl"></b></div>
+  <div class="row"><button id="now">الآن</button><button id="play">▶ تشغيل الوقت</button></div>
+</div>
+
+<div class="card g">
+  <div><small>الرطوبة</small><span id="hu"></span></div>
+  <div><small>الرياح</small><span id="wi"></span></div>
+  <div><small>الغيوم</small><span id="co"></span></div>
+  <div><small>الشروق / الغروب</small><span id="sr"></span></div>
+</div>
+<p style="text-align:center;color:var(--mu);font-size:12px">محاكاة تقريبية وليست بيانات طقس حقيقية</p>
+
+<script>
+const $=id=>document.getElementById(id);
+const M=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+const C={hot:{m:27,a:12,d:9,r:.12,h:25},mild:{m:15,a:10,d:5,r:.35,h:65},cold:{m:3,a:13,d:4,r:.4,h:70}};
+const cl01=(x,a=0,b=1)=>Math.min(b,Math.max(a,x));
+const rnd=s=>{const x=Math.sin(s*127.1+311.7)*43758.5453;return x-Math.floor(x)};
+const mix=(a,b,t)=>a.map((v,i)=>Math.round(v+(b[i]-v)*t));
+const rgb=c=>`rgb(${c})`;
+const fmt=h=>{h=((h%24)+24)%24;let H=Math.floor(h),m=Math.round((h-H)*60);if(m==60){H=(H+1)%24;m=0}return`${H%12||12}:${String(m).padStart(2,'0')} ${H<12?'ص':'م'}`};
+const pad=n=>String(n).padStart(2,'0');
+let day,hour=12,timer=null;
+const t0=new Date();
+day=cl01(Math.round((Date.UTC(2026,t0.getMonth(),t0.getDate())-Date.UTC(2026,0,0))/864e5),1,365);
+hour=Math.round(t0.getHours()+ (t0.getMinutes()>=30?.5:0));
+
+// build clouds
+const sky=$('sky');const cloudEls=[];
+for(let i=0;i<8;i++){const e=document.createElement('div');e.className='c';
+ e.style.top=(15+rnd(i+3)*110)+'px';e.style.width=(120+rnd(i+9)*110)+'px';
+ e.style.animationDuration=(40+rnd(i+20)*50)+'s';e.style.animationDelay=(-rnd(i+30)*60)+'s';
+ sky.insertBefore(e,$('fx'));cloudEls.push(e)}
+
+function calc(day,h,k){
+ const c=C[k],r1=rnd(day),r2=rnd(day+500),r3=rnd(day+900),r4=rnd(day+1300);
+ const winter=day<90||day>300;
+ let cloud=k=='hot'?.08+.55*r1*(winter?1.4:.4):.2+.7*r1;
+ const rp=c.r*(k=='hot'?(winter?3:.15):1);
+ const st=4+r3*14,du=2+r4*6;
+ const rainy=r2<rp&&h>=st&&h<st+du;
+ if(rainy)cloud=Math.max(cloud,.88);
+ cloud=cl01(cloud);
+ const seas=c.a*Math.cos(2*Math.PI*(day-200)/365),noise=(r1-.5)*6;
+ const dn=c.d*(1-.5*cloud)*Math.cos(2*Math.PI*(h-15)/24);
+ const temp=c.m+seas+noise+dn-(rainy?3:0);
+ const hum=cl01((c.h-(temp-c.m)*1.2+cloud*20+(rainy?20:0)-dn*1.5)/100,.1,1)*100;
+ const wind=8+r3*15+cloud*5+(rainy?10:0);
+ const dl=12+2*Math.cos(2*Math.PI*(day-172)/365),sr=12-dl/2,ss=12+dl/2;
+ const isDay=h>=sr&&h<=ss;
+ let cond=rainy?(temp<1?'ثلج ❄️':(wind>24?'عاصفة مطرية ⛈️':'مطر 🌧️')):cloud>.75?'غائم ☁️':cloud>.4?(isDay?'غائم جزئياً ⛅':'غائم جزئياً ☁️'):(isDay?'مشمس ☀️':'صافٍ 🌙');
+ return{temp,hum,wind,cloud,rainy,snow:rainy&&temp<1,sr,ss,dl,isDay,cond};
+}
+
+const cv=$('fx'),g=cv.getContext('2d');let P=[],mode=0,inten=0;
+function rs(){cv.width=cv.clientWidth;cv.height=cv.clientHeight}
+function loop(){
+ g.clearRect(0,0,cv.width,cv.height);
+ if(mode){const n=Math.round(60+inten*140);
+  while(P.length<n)P.push({x:Math.random()*cv.width,y:Math.random()*cv.height,v:mode==1?10+Math.random()*8:1+Math.random()*1.5});
+  P.length=Math.min(P.length,n);
+  g.strokeStyle='rgba(180,210,255,.75)';g.fillStyle='rgba(255,255,255,.9)';
+  for(const p of P){p.y+=p.v;p.x+=mode==1?-2:Math.sin(p.y/20)*.6;
+   if(p.y>cv.height){p.y=-10;p.x=Math.random()*cv.width}
+   if(p.x<0)p.x=cv.width;
+   g.beginPath();
+   if(mode==1){g.moveTo(p.x,p.y);g.lineTo(p.x+2,p.y-10);g.stroke()}else{g.arc(p.x,p.y,2,0,7);g.fill()}}
+ }else P=[];
+ requestAnimationFrame(loop)}
+
+function render(){
+ const k=$('cl').value,w=calc(day,hour,k);
+ const d=new Date(2026,0,day);
+ $('dl').textContent=`${d.getDate()} ${M[d.getMonth()]}`;
+ $('dt').value=`2026-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+ $('ds').value=day;$('hs').value=hour;$('hl').textContent=fmt(hour);
+ $('t').textContent=Math.round(w.temp)+'°';$('cd').textContent=w.cond;
+ $('hu').textContent=Math.round(w.hum)+'%';$('wi').textContent=Math.round(w.wind)+' كم/س';
+ $('co').textContent=Math.round(w.cloud*100)+'%';$('sr').textContent=`${fmt(w.sr)} / ${fmt(w.ss)}`;
+ // sky colors
+ let e=w.isDay?Math.sin(Math.PI*(hour-w.sr)/w.dl):-.3;
+ const light=cl01((e+.1)/.4),tw=Math.max(0,1-Math.abs(e)/.25);
+ let top=mix([10,16,48],[60,150,230],light),bot=mix([25,35,80],[150,210,250],light);
+ bot=mix(bot,[250,150,90],tw*.7*(w.isDay?1:0)||tw*.5);
+ const gray=mix([70,78,92],[135,145,158],light);
+ top=mix(top,gray,w.cloud*.75);bot=mix(bot,gray,w.cloud*.6);
+ sky.style.background=`linear-gradient(${rgb(top)},${rgb(bot)})`;
+ // sun / moon / stars
+ const W=sky.clientWidth,H=sky.clientHeight;
+ const sun=$('sun'),moon=$('moon');
+ if(w.isDay){const f=(hour-w.sr)/w.dl;sun.style.display='block';moon.style.display='none';
+  sun.style.left=f*100+'%';sun.style.top=(H*.8-Math.sin(Math.PI*f)*H*.6)+'px';sun.style.opacity=1-w.cloud*.8}
+ else{const nl=24-w.dl,f=((hour-w.ss+24)%24)/nl;sun.style.display='none';moon.style.display='block';
+  moon.style.left=f*100+'%';moon.style.top=(H*.8-Math.sin(Math.PI*f)*H*.6)+'px';moon.style.opacity=1-w.cloud*.8}
+ $('stars').style.opacity=cl01((1-light)*(1-w.cloud*1.2));
+ // clouds
+ const n=Math.round(w.cloud*8),cc=mix(mix([255,255,255],[40,45,60],1-light),[80,88,100],w.rainy?.7:w.cloud*.3);
+ cloudEls.forEach((el,i)=>{el.style.display=i<n?'block':'none';el.style.setProperty('--cc',rgb(cc));el.style.opacity=.55+w.cloud*.4});
+ // precipitation
+ mode=w.rainy?(w.snow?2:1):0;inten=w.cloud;
+}
+
+$('ds').oninput=e=>{day=+e.target.value;render()};
+$('hs').oninput=e=>{hour=+e.target.value;render()};
+$('cl').onchange=render;
+$('dt').onchange=e=>{const v=e.target.value;if(!v)return;const [y,m,dd]=v.split('-').map(Number);
+ day=cl01(Math.round((Date.UTC(2026,m-1,dd)-Date.UTC(2026,0,0))/864e5),1,365);render()};
+$('now').onclick=()=>{const n=new Date();day=cl01(Math.round((Date.UTC(2026,n.getMonth(),n.getDate())-Date.UTC(2026,0,0))/864e5),1,365);hour=Math.round((n.getHours()+n.getMinutes()/60)*2)/2;render()};
+$('play').onclick=()=>{const b=$('play');
+ if(timer){clearInterval(timer);timer=null;b.classList.remove('on');b.textContent='▶ تشغيل الوقت'}
+ else{b.classList.add('on');b.textContent='⏸ إيقاف';
+  timer=setInterval(()=>{hour+=.5;if(hour>=24){hour=0;day=day%365+1}render()},250)}};
+addEventListener('resize',()=>{rs();render()});
+rs();render();loop();
+</script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js');
+  }
+</script>
+</body>
+</html>
